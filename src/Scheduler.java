@@ -30,24 +30,21 @@ public class Scheduler extends Thread {
         this.readyQueue = readyQueue;
         this.logger = logger;
     }
+@Override
+public void run() {
+    try {
+        while (true) {
+            Job job = arrivalQueue.take();
+            if (job.isPoisonPill()) break;
 
-    @Override
-    public void run() {
-        // TODO: วนรับงานเข้ามาแล้วใส่ ReadyQueue จนกว่าจะได้รับสัญญาณให้หยุด
-       try {
-            while (!Thread.currentThread().isInterrupted()) {
-                Job job = arrivalQueue.take();
-
-                if (job.isPoisonPill()) {
-                    readyQueue.add(job);
-                    break;
-                }
-
-                // นำ Job ใส่เข้า ReadyQueue ตาม Policy
-                readyQueue.add(job);
-            }
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
+            logger.systemEvent("job=" + job.id + " READY");
+            readyQueue.add(job);
         }
+    } catch (InterruptedException e) {
+        Thread.currentThread().interrupt();
+        logger.systemEvent("scheduler interrupted");
+    } finally {
+        readyQueue.add(Job.createPoisonPill());
     }
+}
 }

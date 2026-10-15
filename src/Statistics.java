@@ -71,43 +71,51 @@ public class Statistics {
      * และ Throughput อย่างน้อย 2 ตำแหน่งทศนิยม
      */
     public void printSummary(List<Job> allJobs, long makespanMs) {
-        // TODO
-        double totalWT = 0;
-        double totalTAT = 0;
-        double totalRW = 0;
-        int resourceJobCount = 0;
+    List<Job> done;
+    synchronized (completedJobsList) {
+        done = new ArrayList<>(completedJobsList);
+    }
 
-        for (Job job : allJobs) {
-            // คำนวณค่าของ Job แต่ละตัว
-            long waitingTime = job.getStartTime() - job.getArrivalMs();
-            long turnaroundTime = job.getCompletionTime() - job.getArrivalMs();
+    double totalWT = 0, totalTAT = 0, totalRW = 0;
+    int resourceJobCount = 0;
+    long maxDrift = 0;
 
-            long resourceWaitTime = 0;
-            if (job.getResource() != ResourceType.NONE) {
-                resourceWaitTime = job.getResourceAcquireTime() - job.getResourceWaitStartTime();
-                totalRW += resourceWaitTime;
-                resourceJobCount++;
-            }
+    for (Job job : done) {
+        long wt  = job.getStartTime() - job.getActualArrivalMs();
+        long tat = job.getCompletionTime() - job.getActualArrivalMs();
 
-            totalWT += waitingTime;
-            totalTAT += turnaroundTime;
+        long rw = 0;
+        if (job.getResource() != ResourceType.NONE) {
+            rw = job.getResourceAcquireTime() - job.getResourceWaitStartTime();
+            totalRW += rw;
+            resourceJobCount++;
         }
 
-        int totalJobs = allJobs.size();
-        double avgWT = totalJobs > 0 ? totalWT / totalJobs : 0;
-        double avgTAT = totalJobs > 0 ? totalTAT / totalJobs : 0;
-        double avgRW = resourceJobCount > 0 ? totalRW / resourceJobCount : 0;
+        // ตรวจสมการ: TAT = WT + workMs + RW + resourceMs (คลาดได้เล็กน้อยจาก sleep)
+        long drift = tat - (wt + job.getWorkMs() + rw + job.getResourceMs());
+        maxDrift = Math.max(maxDrift, Math.abs(drift));
 
-        // Throughput = จำนวน Job ทั้งหมด / เวลาประมวลผลรวมในหน่วยวินาที
-        double throughput = makespanMs > 0 ? (double) totalJobs / (makespanMs / 1000.0) : 0;
-
-        System.out.println("\n========== SIMULATION SUMMARY ==========");
-        System.out.println(String.format("Total Jobs Processed : %d", totalJobs));
-        System.out.println(String.format("Total Execution Time : %d ms", makespanMs));
-        System.out.println(String.format("Average Waiting Time (WT) : %.0f ms", avgWT));
-        System.out.println(String.format("Average Turnaround Time (TAT) : %.0f ms", avgTAT));
-        System.out.println(String.format("Average Resource Wait (RW) : %.0f ms", avgRW));
-        System.out.println(String.format("Throughput : %.2f jobs/sec", throughput));
-        System.out.println("========================================\n");
+        totalWT += wt;
+        totalTAT += tat;
     }
+
+    int n = done.size();
+    double avgWT  = n > 0 ? totalWT / n : 0;
+    double avgTAT = n > 0 ? totalTAT / n : 0;
+    double avgRW  = resourceJobCount > 0 ? totalRW / resourceJobCount : 0;
+    double throughput = makespanMs > 0 ? n / (makespanMs / 1000.0) : 0;
+
+    System.out.println("\n========== SIMULATION SUMMARY ==========");
+    if (n != allJobs.size()) {
+        System.out.println("WARNING: completed " + n + " of " + allJobs.size() + " jobs");
+    }
+    System.out.printf("Total Jobs Completed : %d%n", n);
+    System.out.printf("Total Execution Time : %d ms%n", makespanMs);
+    System.out.printf("Average Waiting Time (WT)     : %.0f ms%n", avgWT);
+    System.out.printf("Average Turnaround Time (TAT) : %.0f ms%n", avgTAT);
+    System.out.printf("Average Resource Wait (RW)    : %.0f ms%n", avgRW);
+    System.out.printf("Throughput : %.2f jobs/sec%n", throughput);
+    System.out.printf("Max per-job equation drift    : %d ms%n", maxDrift);
+    System.out.println("========================================\n");
+}
 }

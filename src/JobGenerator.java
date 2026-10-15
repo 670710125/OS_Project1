@@ -60,11 +60,12 @@ public class JobGenerator extends Thread {
                 arrivalQueue.put(job);
             }
 
-            // ส่ง Poison Pill เมื่อปล่อยงานครบแล้ว
-            arrivalQueue.put(Job.createPoisonPill());
-
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
+        
+            finally {
+        arrivalQueue.offer(Job.createPoisonPill()); // ส่งเสมอ ไม่ว่าจบแบบไหน
+    }
     }
 }

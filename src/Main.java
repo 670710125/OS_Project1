@@ -47,7 +47,7 @@ public class Main {
         logger.systemStart(config);
         logger.systemEvent("โหลดงานได้ " + jobs.size() + " ชิ้น");
 
-        long startSimulationTime = System.currentTimeMillis();
+     
 
         // ---------- 3. สร้างส่วนประกอบของระบบ ----------
         // TODO: สร้าง ResourceManager จากจำนวน permit ใน config
@@ -83,43 +83,21 @@ public class Main {
         jobGenerator.start();
         // ลำดับการ start มีผลหรือไม่ ให้คิดและอธิบายได้ใน Demo
 
-        // ---------- 5. รอจนงานเสร็จครบ ----------
-        // TODO: รอจนกว่างานทั้ง jobs.size() ชิ้นจะเสร็จ
-
+                // ---------- 5. รอให้ระบบจบเอง ----------
+        // Generator ส่ง pill -> Scheduler ส่งต่อ -> Worker ส่งต่อกันเอง
+        // pill อยู่หลังงานจริงทุกชิ้น Worker จึงจบหลังงานสุดท้ายเสร็จเสมอ
         try {
             jobGenerator.join();
             scheduler.join();
+            for (Worker worker : workerThreads) {
+                worker.join();
+            }
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
         }
 
-        // บล็อกรออยู่ในลูปจนกว่า Worker จะประมวลผล Job ทั้งหมดครบถ้วน
-        while (statistics.completedCount() < jobs.size()) {
-            try {
-                Thread.sleep(100); // ตรวจสอบความคืบหน้าทุก 100 ms โดยไม่กิน CPU
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                break;
-            }
-        }
-        //
-        // *** นี่คือจุดที่ยากที่สุดของโครงงานนี้ ***
-        // Worker ที่กำลังรออยู่ในคิวไม่มีทางรู้ได้เองว่าจะไม่มีงานเข้ามาอีกแล้ว
-        // กลุ่มต้องออกแบบวิธีบอก โดยห้ามใช้การเดาเวลา เช่น sleep(10000)
-        //
-        // เทคนิคที่ไปหาอ่านต่อได้ (เลือกใช้อันใดอันหนึ่งหรือผสมกันก็ได้):
-        //   - poison pill
-        //   - CountDownLatch
-        //   - ตัวนับงานค้างที่ป้องกันด้วย lock
-        //
-        // อาการผิดที่ต้องไม่เกิด:
-        //   1. main จบแล้วแต่ JVM ไม่ปิด เพราะยังมี Thread ค้างอยู่
-        //   2. Worker หยุดก่อนที่งานชิ้นสุดท้ายจะทำเสร็จ
-        //   3. permit ค้างเพราะถูก interrupt ระหว่างถือ resource
-
-        // ---------- 6. สั่งหยุดทุก Thread ----------
-        // TODO: หยุด Worker ทุกตัว, Scheduler, Monitor และ JobGenerator
-        // TODO: join ทุก Thread เพื่อยืนยันว่าหยุดจริงก่อนไปขั้นถัดไป
+        // ---------- 6. หยุด Monitor (ไม่ได้รับ pill จึงต้อง interrupt) ----------
+        long makespanMs = logger.now();   // อ่านก่อนหยุด Monitor
         monitor.interrupt();
         try {
             monitor.join();
@@ -127,35 +105,9 @@ public class Main {
             Thread.currentThread().interrupt();
         }
 
-        // ส่ง Poison Pill ให้ Worker Thread ทุกตัวจบการทำงาน
-        for (int i = 0; i < config.workers; i++) {
-            readyQueue.add(Job.createPoisonPill());
-        }
-
-        // รอให้ Worker Thread ทุกตัวปิดตัวลงอย่างสมบูรณ์
-        for (Worker worker : workerThreads) {
-            try {
-                worker.join();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-            }
-        }
-
-        long endSimulationTime = System.currentTimeMillis();
-        long totalExecutionTimeMs = endSimulationTime - startSimulationTime;
-
         // ---------- 7. สรุปผล ----------
-        // TODO: หา makespan = เวลาที่งานชิ้นสุดท้ายเสร็จ (ใช้ logger.now())
-        // TODO: เรียก statistics.printSummary(jobs, makespanMs)
-        // TODO: logger.systemStop(completed, jobs.size())
-        
-        // 1. หาค่า makespan = เวลาที่งานชิ้นสุดท้ายเสร็จ (ใช้เวลาจาก logger)
-        long makespanMs = logger.now(); 
-
-        // 2. พิมพ์สรุปผลสถิติลง Terminal
         statistics.printSummary(jobs, makespanMs);
-
-        // 3. แจ้ง logger ว่าระบบหยุดทำงานพร้อมส่งจำนวนงานที่เสร็จจริงเทียบกับงานทั้งหมด
         logger.systemStop(statistics.completedCount(), jobs.size());
     }
 }
+

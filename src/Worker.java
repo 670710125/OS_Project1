@@ -45,6 +45,7 @@ public class Worker extends Thread {
 
                 // ตรวจสอบ Poison Pill สำหรับสัญญาณปิดการทำงาน
                 if (job.isPoisonPill()) {
+                    readyQueue.add(job);   // ส่งต่อให้ Worker ตัวถัดไป 
                     break;
                 }
 
@@ -53,10 +54,11 @@ public class Worker extends Thread {
 
                 try {
                     processJob(job);
+                     statistics.incrementCompletedJobs();
                 } finally {
                     // เมื่องานเสร็จ (หรือเกิดข้อผิดพลาด) ปรับลดจำนวนงานกำลังรัน และเพิ่มจำนวนงานที่เสร็จแล้ว
                     statistics.decrementRunningJobs();
-                    statistics.incrementCompletedJobs();
+                   
                 }
             }
         } catch (InterruptedException e) {
@@ -89,13 +91,14 @@ public class Worker extends Thread {
             // ขอใช้ Resource
             resources.acquire(job.getResource());
             
+            
+            try {
             long acquireTime = logger.now();
             job.setResourceAcquireTime(acquireTime);
             long waitedMs = acquireTime - waitStart;
-            
+    
             logger.resourceAcquired(job, waitedMs);
 
-            try {
                 if (job.getResourceMs() > 0) {
                     Thread.sleep(job.getResourceMs());
                 }

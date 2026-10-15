@@ -2,6 +2,7 @@ import java.util.Comparator;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.PriorityBlockingQueue;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * คิวงานที่พร้อมถูกหยิบไปทำ
@@ -26,6 +27,7 @@ public class ReadyQueue {
 
     // TODO: เก็บนโยบาย (Config.Policy) และโครงสร้างข้อมูลที่ใช้เก็บงาน
     private final BlockingQueue<Job> queue;
+    private final AtomicInteger readyCount = new AtomicInteger(0); 
 
     public ReadyQueue(Config.Policy policy) {
         // TODO
@@ -35,6 +37,10 @@ public class ReadyQueue {
         } else if (policy == Config.Policy.PRIORITY) {
             // กำหนด Comparator สำหรับ Priority และ Tie-breaker
             Comparator<Job> priorityComparator = (j1, j2) -> {
+                 // pill อยู่หลังงานจริงทุกชิ้นเสมอ
+                if (j1.isPoisonPill() != j2.isPoisonPill()) {
+                    return j1.isPoisonPill() ? 1 : -1;
+    }
                 // 1. เปรียบเทียบ priority (ค่าน้อยกว่า = ความสำคัญสูงกว่า)
                 int pComp = Integer.compare(j1.getPriority(), j2.getPriority());
                 if (pComp != 0) {
@@ -60,7 +66,10 @@ public class ReadyQueue {
     /** ใส่งานเข้าคิว เรียกโดย Scheduler Thread */
     public void add(Job job) {
         // TODO
-       queue.add(job);
+       if (!job.isPoisonPill()) {
+            readyCount.incrementAndGet(); // เพิ่มก่อน add ตัวนับจะไม่ติดลบชั่วขณะ
+        }
+        queue.add(job);
     }
 
     /**
@@ -71,12 +80,16 @@ public class ReadyQueue {
      */
     public Job take() throws InterruptedException {
         // TODO
-       return queue.take();
+     Job job = queue.take();
+    if (!job.isPoisonPill()) {
+        readyCount.decrementAndGet();
+    }
+    return job;
     }
 
     /** จำนวนงานที่รออยู่ตอนนี้ ใช้โดย Monitor — ต้องอ่านได้อย่างปลอดภัย */
     public int size() {
         // TODO
-       return queue.size();
+        return readyCount.get();
     }
 }
